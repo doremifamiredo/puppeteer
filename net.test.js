@@ -1,7 +1,21 @@
-const { clickElement, putText, getText } = require("./lib/commands.js");
+const {
+  selectOneElement,
+  selectRandomElement,
+  selectChair,
+  clickElement,
+  clickSelector,
+  getText,
+} = require("./lib/commands.js");
 const { generateName } = require("./lib/util.js");
 
 let page;
+const daySelector = "a.page-nav__day";
+const timeSelector = "a.movie-seances__time:not(.acceptin-button-disabled)";
+const rowSelector = ".buying-scheme__row";
+const chairSelector = ".buying-scheme__chair";
+const chairNotTakenSelector = ".buying-scheme__chair_standart:not(.buying-scheme__chair_taken)";
+const buttonSelector = "button.acceptin-button";
+const takenSelector = "buying-scheme__chair_taken";
 
 beforeEach(async () => {
   page = await browser.newPage();
@@ -12,44 +26,104 @@ afterEach(() => {
   page.close();
 });
 
-describe("Netology.ru tests", () => {
+describe("Ticket Booking Test", () => {
   beforeEach(async () => {
-    page = await browser.newPage();
-    await page.goto("https://netology.ru");
+    await page.goto("https://qamid.tmweb.ru/client/index.php");
   });
 
-  test("The first test'", async () => {
-    const title = await page.title();
-    console.log("Page title: " + title);
-    await clickElement(page, "header a + a");
-    const title2 = await page.title();
-    console.log("Page title: " + title2);
-    const pageList = await browser.newPage();
-    await pageList.goto("https://netology.ru/navigation");
-    await pageList.waitForSelector("h1");
+  //----------------------------------
+  test("Positive test. Booking by row and chair", async () => {
+    const day = 3;
+    const time = 3;
+    const row = 2;
+    const chair = 1;
+    const flagTaken = true;
+
+    const dayOfWeek = await selectOneElement(page, daySelector, day);
+    console.log("Дата сеанса : " + (await dayOfWeek.evaluate((el) => el.textContent)));
+    await dayOfWeek.click();
+
+    const seanceTime = await selectOneElement(page, timeSelector, time);
+    console.log("Время сеанса : " + (await seanceTime.evaluate((el) => el.textContent)));
+    await seanceTime.click();
+
+    await page.waitForNavigation();
+
+    const selectedSeat = await selectChair(
+      page,
+      row,
+      rowSelector,
+      chair,
+      chairSelector,
+      flagTaken,
+      takenSelector
+    );
+
+    await clickElement(selectedSeat);
+
+    await clickSelector(page, buttonSelector);
+    await page.waitForTimeout(1_000);
+
+    await page.waitForSelector(buttonSelector);
+    const actual = await getText(page, buttonSelector);
+    await expect(actual).toContain("Получить код бронирования");
+    await clickSelector(page, buttonSelector);
+  }, 120_000);
+
+  //----------------------------------
+  test("Positive test. Booking by selected parameters", async () => {
+    const day = 3;
+    const time = 2;
+    const chair = 5;
+
+    const dayOfWeek = await selectOneElement(page, daySelector, day);
+    console.log("Дата сеанса : " + (await dayOfWeek.evaluate((el) => el.textContent)));
+    await clickElement(dayOfWeek);
+
+    const seanceTime = await selectOneElement(page, timeSelector, time);
+    console.log("Время сеанса : " + (await seanceTime.evaluate((el) => el.textContent)));
+    await clickElement(seanceTime);
+
+    await page.waitForNavigation();
+
+    const freeChair = await selectOneElement(page, chairNotTakenSelector, chair);
+    await clickElement(freeChair);
+
+    await clickSelector(page, buttonSelector);
+    await page.waitForNavigation();
+
+    await page.waitForSelector(buttonSelector);
+    const actual = await getText(page, buttonSelector);
+    await expect(actual).toContain("Получить код бронирования");
+    await clickSelector(page, buttonSelector);
   });
 
-  test("The first link text 'Медиа Нетологии'", async () => {
-    const actual = await getText(page, "header a + a");
-    expect(actual).toContain("Медиа Нетологии");
+  //----------------------------------
+  test("Negative test. Cancel chair selection", async () => {
+    const day = 2;
+    const time = 1;
+    const chairs = [5, 34, 22];
+
+    const dayOfWeek = await selectOneElement(page, daySelector, day);
+    console.log("Дата сеанса : " + (await dayOfWeek.evaluate((el) => el.textContent)));
+    await clickElement(dayOfWeek);
+
+    const seanceTime = await selectOneElement(page, timeSelector, time);
+    console.log("Время сеанса : " + (await seanceTime.evaluate((el) => el.textContent)));
+    await clickElement(seanceTime);
+
+    await page.waitForNavigation();
+
+    for (let i = 0; i < 2; i++) {
+      // первая итерация - выбор стульев, вторая итерация - отмена выбора
+      for (let chair of chairs) {
+        const freeChair = await selectOneElement(page, chairNotTakenSelector, chair);
+        await clickElement(freeChair);
+      }
+    }
+
+    await page.waitForTimeout(1000);
+    const actual = await page.$eval(buttonSelector, (link) => link.disabled);
+    await expect(actual).toBe(true);
   });
-
-  test("The first link leads on 'Медиа' page", async () => {
-    await clickElement(page, "header a + a");
-    const actual = await getText(page, ".logo__media");
-    await expect(actual).toContain("Медиа");
-  });
-});
-
-test("Should look for a course", async () => {
-  await page.goto("https://netology.ru/navigation");
-  await putText(page, "input", "тестировщик");
-  const actual = await page.$eval("a[data-name]", (link) => link.textContent);
-  const expected = "Тестировщик ПО";
-  expect(actual).toContain(expected);
-});
-
-test("Should show warning if login is not email", async () => {
-  await page.goto("https://netology.ru/?modal=sign_in");
-  await putText(page, 'input[type="email"]', generateName(5));
 });
